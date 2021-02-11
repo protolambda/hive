@@ -295,6 +295,13 @@ func WithTAR(src func() io.ReadCloser) StartOption {
 	}
 }
 
+// WithBuildTarget specifies a custom build target to use of this client. Empty string for the default.
+func WithBuildTarget(target string) StartOption {
+	return func(setup *clientSetup) {
+		setup.parameters["BUILD_TARGET"] = target
+	}
+}
+
 func (setup *clientSetup) postWithFiles(url string) (string, error) {
 	var err error
 

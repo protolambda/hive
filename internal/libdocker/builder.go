@@ -37,8 +37,8 @@ func (b *Builder) ReadClientMetadata(name string) (*libhive.ClientMetadata, erro
 	f, err := os.Open(filepath.Join(dir, "hive.yaml"))
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Eth1 client by default
-			return &libhive.ClientMetadata{Role: "eth1"}, nil
+			// Eth1 client by default. Build target is empty by default.
+			return &libhive.ClientMetadata{Role: "eth1", BuildTargets: []string{""}}, nil
 		} else {
 			return nil, fmt.Errorf("failed to read hive metadata file in '%s': %v", dir, err)
 		}
@@ -52,11 +52,15 @@ func (b *Builder) ReadClientMetadata(name string) (*libhive.ClientMetadata, erro
 }
 
 // BuildClientImage builds a docker image of the given client.
-func (b *Builder) BuildClientImage(ctx context.Context, name string) (string, error) {
+func (b *Builder) BuildClientImage(ctx context.Context, name string, target string) (string, error) {
 	dir := b.config.Inventory.ClientDirectory(name)
 	_, branch := libhive.SplitClientName(name)
-	tag := fmt.Sprintf("hive/clients/%s:latest", name)
-	err := b.buildImage(ctx, dir, branch, tag)
+	tagEnd := "latest"
+	if target != "" {
+		tagEnd = target
+	}
+	tag := fmt.Sprintf("hive/clients/%s:%s", name, tagEnd)
+	err := b.buildImage(ctx, dir, branch, target, tag)
 	return tag, err
 }
 
@@ -64,7 +68,7 @@ func (b *Builder) BuildClientImage(ctx context.Context, name string) (string, er
 func (b *Builder) BuildSimulatorImage(ctx context.Context, name string) (string, error) {
 	dir := b.config.Inventory.SimulatorDirectory(name)
 	tag := fmt.Sprintf("hive/simulators/%s:latest", name)
-	err := b.buildImage(ctx, dir, "", tag)
+	err := b.buildImage(ctx, dir, "", "", tag)
 	return tag, err
 }
 
@@ -110,7 +114,8 @@ func (b *Builder) ReadFile(image, path string) ([]byte, error) {
 
 // buildImage builds a single docker image from the specified context.
 // branch specifes a build argument to use a specific base image branch or github source branch.
-func (b *Builder) buildImage(ctx context.Context, contextDir, branch, imageTag string) error {
+// target specifies a
+func (b *Builder) buildImage(ctx context.Context, contextDir, branch, target, imageTag string) error {
 	nocache := false
 	if b.config.NoCachePattern != nil {
 		nocache = b.config.NoCachePattern.MatchString(imageTag)
@@ -122,12 +127,16 @@ func (b *Builder) buildImage(ctx context.Context, contextDir, branch, imageTag s
 		logger.Error("can't find path to context directory", "err", err)
 		return err
 	}
+	dockerfile := "Dockerfile"
+	if target != "" {
+		dockerfile = target + ".Dockerfile"
+	}
 	opts := docker.BuildImageOptions{
 		Context:      ctx,
 		Name:         imageTag,
 		ContextDir:   context,
 		OutputStream: ioutil.Discard,
-		Dockerfile:   "Dockerfile",
+		Dockerfile:   dockerfile,
 		NoCache:      nocache,
 		Pull:         b.config.PullEnabled,
 	}

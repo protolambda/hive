@@ -219,6 +219,15 @@ func (api *simAPI) startClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The default build-target is an empty string. Most clients only support this + runtime configuration,
+	// but some offer deeper customization with build targets.
+	target := r.FormValue("BUILD_TARGET")
+	if _, ok := api.env.Images[name][target]; !ok {
+		log15.Error("API: unrecognized build target", "client", name, "target", target)
+		http.Error(w, "client unrecognized build target", http.StatusBadRequest)
+		return
+	}
+
 	// Set up the timeout.
 	timeout := api.env.ClientStartTimeout
 	if timeout == 0 {
@@ -229,7 +238,7 @@ func (api *simAPI) startClient(w http.ResponseWriter, r *http.Request) {
 
 	// Create the client container.
 	options := ContainerOptions{Env: env, Files: files}
-	containerID, err := api.backend.CreateContainer(ctx, api.env.Images[name], options)
+	containerID, err := api.backend.CreateContainer(ctx, api.env.Images[name][target], options)
 	if err != nil {
 		log15.Error("API: client container create failed", "client", name, "error", err)
 		http.Error(w, "client container create failed: "+err.Error(), http.StatusInternalServerError)

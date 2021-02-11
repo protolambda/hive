@@ -41,8 +41,11 @@ type SimEnv struct {
 	// for the client to open port 8545 after launching the container.
 	ClientStartTimeout time.Duration
 
-	// client name -> image name
-	Images map[string]string
+	// Image name for each client. The default build target is an empty string "".
+	// Alternative build-targets are built from '{target}.Dockerfile' in the same build context.
+	//
+	// client name -> build target -> image name
+	Images map[string]map[string]string
 
 	// client name -> version info
 	ClientVersions map[string]string

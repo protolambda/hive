@@ -23,8 +23,10 @@ func TestClientTypes(t *testing.T) {
 		t.Fatal("can't get client types:", err)
 	}
 	if !reflect.DeepEqual(ctypes, []*libhive.ClientDefinition{
-		{Name: "client-1", Version: "client-1-version", Meta: &libhive.ClientMetadata{Role: "fake1"}},
-		{Name: "client-2", Version: "client-2-version", Meta: &libhive.ClientMetadata{Role: "fake2"}},
+		{Name: "client-1", Version: "client-1-version",
+			Meta: &libhive.ClientMetadata{Role: "fake1", BuildTargets: []string{""}}},
+		{Name: "client-2", Version: "client-2-version",
+			Meta: &libhive.ClientMetadata{Role: "fake2", BuildTargets: []string{"", "minimal"}}},
 	}) {
 		t.Fatal("wrong client types:", ctypes)
 	}
@@ -160,17 +162,17 @@ func TestStartClientErrors(t *testing.T) {
 
 func newFakeAPI(hooks *fakes.BackendHooks) (*libhive.TestManager, *httptest.Server) {
 	env := libhive.SimEnv{
-		Images: map[string]string{
-			"client-1": "client-1-image",
-			"client-2": "client-2-image",
+		Images: map[string]map[string]string{
+			"client-1": {"": "client-1-image"},
+			"client-2": {"": "client-2-image", "minimal": "client-2-minimal"},
 		},
 		ClientVersions: map[string]string{
 			"client-1": "client-1-version",
 			"client-2": "client-2-version",
 		},
 		ClientMetadata: map[string]*libhive.ClientMetadata{
-			"client-1": {Role: "fake1"},
-			"client-2": {Role: "fake2"},
+			"client-1": {Role: "fake1", BuildTargets: []string{""}},
+			"client-2": {Role: "fake2", BuildTargets: []string{"", "minimal"}},
 		},
 	}
 	backend := fakes.NewContainerBackend(hooks)

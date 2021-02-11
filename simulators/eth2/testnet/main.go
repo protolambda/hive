@@ -30,10 +30,10 @@ func main() {
 }
 
 type NodeChoices struct {
-	beacon    []string
-	validator []string
-	eth1      []string
-	other     []string
+	beacon    []*libhive.ClientDefinition
+	validator []*libhive.ClientDefinition
+	eth1      []*libhive.ClientDefinition
+	other     []*libhive.ClientDefinition
 }
 
 func nodeChoices(available []*libhive.ClientDefinition) *NodeChoices {
@@ -41,13 +41,13 @@ func nodeChoices(available []*libhive.ClientDefinition) *NodeChoices {
 	for _, client := range available {
 		switch client.Meta.Role {
 		case "beacon":
-			out.beacon = append(out.beacon, client.Name)
+			out.beacon = append(out.beacon, client)
 		case "validator":
-			out.validator = append(out.validator, client.Name)
+			out.validator = append(out.validator, client)
 		case "eth1":
-			out.eth1 = append(out.eth1, client.Name)
+			out.eth1 = append(out.eth1, client)
 		default:
-			out.other = append(out.other, client.Name)
+			out.other = append(out.other, client)
 		}
 	}
 	return &out
@@ -77,11 +77,11 @@ func ComposeTestnetTest(name string, description string, build ...TestnetDecorat
 
 func (nc *NodeChoices) runTests(t *hivesim.T) {
 
-	for _, beaconType := range nc.beacon {
+	for _, beaconDef := range nc.beacon {
 		// only generate data once
 		prep := prepareTestnet(t)
 
-		validatorType, err := nc.preferredValidator(beaconType)
+		validatorDef, err := nc.preferredValidator(beaconDef.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,8 +90,8 @@ func (nc *NodeChoices) runTests(t *hivesim.T) {
 			"This runs quick eth2 single-client testnets, beacon nodes matched with preferred validator type, and dummy eth1 endpoint.",
 			func(testnet *Testnet) {
 				for i := 0; i < len(prep.keys); i++ {
-					prep.buildBeaconNode(beaconType, nil)(testnet)
-					prep.buildValidatorClient(validatorType, i, i)(testnet)
+					prep.buildBeaconNode(beaconDef, nil)(testnet)
+					prep.buildValidatorClient(validatorDef, i, i)(testnet)
 				}
 			},
 		))
@@ -109,19 +109,29 @@ func (nc *NodeChoices) runTests(t *hivesim.T) {
 	*/
 }
 
-func (nc *NodeChoices) preferredValidator(beacon string) (string, error) {
+func (nc *NodeChoices) preferredValidator(beacon string) (*libhive.ClientDefinition, error) {
 	beaconVendor := strings.Split(beacon, "-")[0]
 	for _, v := range nc.validator {
-		valVendor := strings.Split(v, "-")[0]
+		valVendor := strings.Split(v.Name, "-")[0]
 		if beaconVendor == valVendor {
 			return v, nil
 		}
 	}
-	return "", fmt.Errorf("no preferred validator for beacon %s", beacon)
+	return nil, fmt.Errorf("no preferred validator for beacon %s", beacon)
+}
+
+func hasBuildTarget(def *libhive.ClientDefinition, target string) bool {
+	for _, bt := range def.Meta.BuildTargets {
+		if bt == target {
+			return true
+		}
+	}
+	return false
 }
 
 // PreparedTestnet has all the options for starting nodes, ready to build the network.
 type PreparedTestnet struct {
+	configName            string
 	commonValidatorParams hivesim.StartOption
 	commonBeaconParams    hivesim.StartOption
 	configOpt             hivesim.StartOption
@@ -131,6 +141,7 @@ type PreparedTestnet struct {
 
 func prepareTestnet(t *hivesim.T) *PreparedTestnet {
 	// TODO: copy and modify with env vars
+	configName := "mainnet"
 	spec := configs.Mainnet // TODO: mod config
 	valCount := uint64(4096)
 	keyPartitions := uint64(4)
@@ -183,6 +194,7 @@ func prepareTestnet(t *hivesim.T) *PreparedTestnet {
 	}
 
 	return &PreparedTestnet{
+		configName:            configName,
 		commonBeaconParams:    beaconParams,
 		commonValidatorParams: validatorParams,
 		configOpt:             eth2Config,
@@ -204,18 +216,18 @@ func NewTestnet(t *hivesim.T) *Testnet {
 	return &Testnet{t: t}
 }
 
-func (p *PreparedTestnet) buildEth1Node(eth1Type string) func(testnet *Testnet) {
+func (p *PreparedTestnet) buildEth1Node(eth1Def *libhive.ClientDefinition) func(testnet *Testnet) {
 	return func(testnet *Testnet) {
 		// TODO: eth1 node options: custom eth1 chain to back deposits for eth2 testnet...
-		n := testnet.t.StartClientWithOptions(eth1Type)
+		n := testnet.t.StartClientWithOptions(eth1Def.Name)
 		testnet.eth1 = append(testnet.eth1, n)
 	}
 }
 
-func (p *PreparedTestnet) buildBeaconNode(beaconType string, eth1Endpoints []int) TestnetDecorator {
+func (p *PreparedTestnet) buildBeaconNode(beaconDef *libhive.ClientDefinition, eth1Endpoints []int) TestnetDecorator {
 	return func(testnet *Testnet) {
+		opts := []hivesim.StartOption{p.configOpt, p.stateOpt, p.commonBeaconParams}
 		// Hook up validator to beacon node
-		params := hivesim.Params{}
 		if len(eth1Endpoints) > 0 {
 			var addrs []string
 			for _, index := range eth1Endpoints {
@@ -225,15 +237,17 @@ func (p *PreparedTestnet) buildBeaconNode(beaconType string, eth1Endpoints []int
 				eth1Node := testnet.eth1[index]
 				addrs = append(addrs, fmt.Sprintf("http://%v:8545", eth1Node.IP))
 			}
-			params["ETH1_RPC_ADDRS"] = strings.Join(addrs, ",")
+			opts = append(opts, hivesim.WithParams(hivesim.Params{"ETH1_RPC_ADDRS": strings.Join(addrs, ",")}))
 		}
-		bn := testnet.t.StartClientWithOptions(
-			beaconType, p.configOpt, p.stateOpt, p.commonBeaconParams, hivesim.WithParams(params))
+		if p.configName != "mainnet" && hasBuildTarget(beaconDef, p.configName) {
+			opts = append(opts, hivesim.WithBuildTarget(p.configName))
+		}
+		bn := testnet.t.StartClientWithOptions(beaconDef.Name, opts...)
 		testnet.beacons = append(testnet.beacons, bn)
 	}
 }
 
-func (p *PreparedTestnet) buildValidatorClient(validatorType string, bnIndex int, keyIndex int) func(testnet *Testnet) {
+func (p *PreparedTestnet) buildValidatorClient(validatorDef *libhive.ClientDefinition, bnIndex int, keyIndex int) func(testnet *Testnet) {
 	return func(testnet *Testnet) {
 		if bnIndex >= len(testnet.beacons) {
 			testnet.t.Fatalf("only have %d beacon nodes, cannot find index %d for VC", len(testnet.beacons), bnIndex)
@@ -247,7 +261,13 @@ func (p *PreparedTestnet) buildValidatorClient(validatorType string, bnIndex int
 			testnet.t.Fatalf("only have %d key tranches, cannot find index %d for VC", len(p.keys), keyIndex)
 		}
 		keysOpt := p.keys[keyIndex]
-		vc := testnet.t.StartClientWithOptions(validatorType, p.configOpt, keysOpt, p.commonValidatorParams, bnAPIOpt)
+		opts := []hivesim.StartOption{
+			p.configOpt, keysOpt, p.commonValidatorParams, bnAPIOpt,
+		}
+		if p.configName != "mainnet" && hasBuildTarget(validatorDef, p.configName) {
+			opts = append(opts, hivesim.WithBuildTarget(p.configName))
+		}
+		vc := testnet.t.StartClientWithOptions(validatorDef.Name, opts...)
 		testnet.validators = append(testnet.validators, vc)
 	}
 }

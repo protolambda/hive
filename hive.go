@@ -136,7 +136,7 @@ type simRunner struct {
 
 // initClients builds client images.
 func (r *simRunner) initClients(ctx context.Context, clientList []string) error {
-	r.env.Images = make(map[string]string)
+	r.env.Images = make(map[string]map[string]string)
 	r.env.ClientVersions = make(map[string]string)
 	r.env.ClientMetadata = make(map[string]*libhive.ClientMetadata)
 
@@ -152,17 +152,27 @@ func (r *simRunner) initClients(ctx context.Context, clientList []string) error 
 		if err != nil {
 			return err
 		}
-		image, err := r.builder.BuildClientImage(ctx, client)
-		if err != nil {
-			return err
+		// Always build the default image (empty target string)
+		targets := []string{""}
+		if len(meta.BuildTargets) > 0 {
+			targets = append(targets, meta.BuildTargets...)
 		}
+		r.env.Images[client] = make(map[string]string)
+		for _, target := range targets {
+			image, err := r.builder.BuildClientImage(ctx, client, target)
+			if err != nil {
+				return err
+			}
+			r.env.Images[client][target] = image
+		}
+		// Fetch the version, from the default build target (other targets are assumed to be the same)
+		image := r.env.Images[client][""]
 		version, err := r.builder.ReadFile(image, "/version.json")
 		if err != nil {
 			log15.Warn("can't read version info of "+client, "image", image, "err", err)
 		}
-		r.env.ClientMetadata[client] = meta
-		r.env.Images[client] = image
 		r.env.ClientVersions[client] = string(version)
+		r.env.ClientMetadata[client] = meta
 	}
 	return nil
 }

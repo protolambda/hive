@@ -130,12 +130,13 @@ GET /clients
 
 Response
 ```
-[{"name": "go-ethereum_latest", "version": "go-ethereum/v1.2.3/example", "meta": {"role": "eth1"}}]
+[{"name": "go-ethereum_latest", "version": "go-ethereum/v1.2.3-example", "meta": {"role": "eth1", "target: ""}}]
 ```
 
 **Start client**
 
 This request requires several form values in the body, such as parameters and files for configuring the client. One parameter must be named `CLIENT` and should contain one of the client types from the `/clients` endpoint. The parameters are used as environment variables in the new container.
+Optionally, an additional `BUILD_TARGET` parameter can be used to specify a different target (different Dockerfile).
 
 ```
 POST /testsuite/{suite}/test/{test}/node

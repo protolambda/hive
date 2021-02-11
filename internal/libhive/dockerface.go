@@ -84,7 +84,8 @@ type ContainerInfo struct {
 
 // ClientMetadata is metadata to describe the client in more detail, configured with a YAML file in the client dir.
 type ClientMetadata struct {
-	Role string `yaml:"role" json:"role"`
+	Role         string   `yaml:"role" json:"role"`
+	BuildTargets []string `yaml:"build_targets" json:"build_targets"`
 }
 
 // ClientDefinition is served by the /clients API endpoint to list the available clients
@@ -97,7 +98,8 @@ type ClientDefinition struct {
 // Builder can build docker images of clients and simulators.
 type Builder interface {
 	ReadClientMetadata(name string) (*ClientMetadata, error)
-	BuildClientImage(ctx context.Context, name string) (string, error)
+	// Builds a client, the target can be left unspecified (empty string) for the default
+	BuildClientImage(ctx context.Context, name string, target string) (string, error)
 	BuildSimulatorImage(ctx context.Context, name string) (string, error)
 
 	// ReadFile returns the content of a file in the given image.
