@@ -37,10 +37,13 @@ func packTar(b []byte) hivesim.StartOption {
 	})
 }
 
-func StateTar(spec *beacon.Spec, keys []*KeyDetails, genesisTime beacon.Timestamp) (hivesim.StartOption, error) {
-	state, err := BuildPhase0State(spec, keys, genesisTime)
+func StateTar(templ *beacon.BeaconStateView, genesisTime time.Time) (hivesim.StartOption, error) {
+	state, err := beacon.AsBeaconStateView(templ.Copy())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to copy state: %v", err)
+	}
+	if err := state.SetGenesisTime(beacon.Timestamp(genesisTime.Unix())); err != nil {
+		return nil, fmt.Errorf("failed to set genesis time: %v", err)
 	}
 	var stateBytes bytes.Buffer
 	if err := state.Serialize(codec.NewEncodingWriter(&stateBytes)); err != nil {
